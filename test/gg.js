@@ -19,4 +19,15 @@ describe('Graph generator tests', () => {
 
     expect(math.min(math.multiply(adjMatrix, math.ones(nbrNodes))) >= 1);
   });
+
+  it('Verifies creation of a large matrix', () => {
+    const nbrNodes = 1000;
+    const adjMatrix = gg.generateGraph({ nbrNodes });
+    const transposed = math.transpose(adjMatrix);
+
+    expect(adjMatrix.size()).to.deep.equal([nbrNodes, nbrNodes]);
+    expect(math.deepEqual(adjMatrix, transposed)).to.equal(true);
+    expect(math.deepEqual(math.zeros(nbrNodes), math.diag(adjMatrix)));
+    expect(math.min(math.multiply(adjMatrix, math.ones(nbrNodes))) >= 1);
+  });
 });

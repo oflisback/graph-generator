@@ -13,42 +13,56 @@ function withinPlaneRange(a, b, limit) {
   return Math.sqrt(Math.pow(a.xPos - b.xPos, 2) + Math.pow(a.yPos - b.yPos, 2)) < limit;
 }
 
-function connectNeighbours(nodes, i, forwards, range, axis) {
-  var c = forwards ? Math.min(nodes.length, i + 1) : Math.max(0, i - 1);
-  var cBreak = forwards ? nodes.length : 0;
-  while (c !== cBreak && axisDistance(nodes[i], nodes[c], axis) < range) {
-    if (withinPlaneRange(nodes[i], nodes[c], range)) {
-      nodes[i].vertices[nodes[c].id] = 1;
+function connectNeighbours(nodes, pos, limit, options) {
+  var c = options.forwards ? Math.min(nodes.length, pos + 1) : Math.max(0, pos - 1);
+  var cBreak = options.forwards ? nodes.length : -1;
+  while (c !== cBreak && axisDistance(nodes[pos], nodes[c], options.axis) < limit) {
+    if (withinPlaneRange(nodes[pos], nodes[c], limit)) {
+      nodes[pos].vertices[nodes[c].id] = 1;
     }
-    c = c + (forwards ? 1 : -1);
+    c = c + (options.forwards ? 1 : -1);
   }
 }
 
+// Simple unscientific way to build undirected graphs of arbitrary
+// size and with somewhat tunable clustering
 _exports.generateGraph = function generateGraph(options) {
   var opt = options || {};
   var nbrNodes = opt.nbrNodes || 10;
-  var distanceFactor = opt.distanceFactor || 1;
-  var spacing = 100;
-  var neighbourRange = spacing * distanceFactor;
-  var nodes = [];
-  var adjMatrix = [];
+  var nbrClusterCenters = opt.nbrClusterCenters || 4;
+  // Conncetivity affects number of connections between nodes
+  var connectivity = opt.connectivity || 0.5;
 
-  // Randomly place all nodes within a large range
-  for (var i = 0; i < nbrNodes; i++) {
-    // Nodes with identical position is ok
-    var xPos = Math.floor(Math.random() * (spacing * nbrNodes + 1));
-    var yPos = Math.floor(Math.random() * (spacing * nbrNodes + 1));
-    nodes.push({ id: i, xPos: xPos, yPos: yPos, vertices: Array(nbrNodes).fill(0) });
+  // Length of each axis along which we place nodes
+  var range = 10 * nbrNodes;
+  // Factor affecting cluster width
+  var clusterWidth = Math.round(range / nbrClusterCenters);
+  var nodesPerAnchor = Math.floor(nbrNodes / nbrClusterCenters);
+  var neighbourRange = clusterWidth * connectivity / 2;
+  var nbrExtraNodes = nbrNodes - nodesPerAnchor * nbrClusterCenters;
+
+  var nodes = [];
+  for (var i = 0; i < nbrClusterCenters; i++) {
+    var anchorX = range * Math.random();
+    var anchorY = range * Math.random();
+    // Add any extra nodes caused by round off on last anchor.
+    var nodesForAnchor = i !== nbrClusterCenters - 1 ? nodesPerAnchor : nodesPerAnchor + nbrExtraNodes;
+    for (var j = 0; j < nodesForAnchor; j++) {
+      /* rand()*(rand() - 0.5) produces normal distribution centered around 0 */
+      var xPos = Math.round(anchorX + clusterWidth * (Math.random() * (Math.random() - 0.5)) / 2);
+      var yPos = Math.round(anchorY + clusterWidth * (Math.random() * (Math.random() - 0.5)) / 2);
+      nodes.push({ id: i * nodesPerAnchor + j, xPos: xPos, yPos: yPos,
+        vertices: Array(nbrNodes).fill(0) });
+    }
   }
 
-  // Sort nodes based on xPos
+  // Sort nodes based on xPos before connecting them based on position on
+  // x axis.
   nodes.sort(function (a, b) {
     return a.xPos - b.xPos;
   });
 
   for (var _i = 0; _i < nbrNodes; _i++) {
-    connectNeighbours(nodes, _i, false, neighbourRange, 'x');
-
     // All nodes should connect to the previous one except the first node
     if (_i !== 0) {
       nodes[_i].vertices[nodes[_i - 1].id] = 1;
@@ -59,21 +73,23 @@ _exports.generateGraph = function generateGraph(options) {
       nodes[_i].vertices[nodes[_i + 1].id] = 1;
     }
 
-    connectNeighbours(nodes, _i, true, neighbourRange, 'x');
+    connectNeighbours(nodes, _i, neighbourRange, { forwards: false, axis: 'x' });
+    connectNeighbours(nodes, _i, neighbourRange, { forwards: true, axis: 'x' });
   }
 
   // At this point all nodes are connected to the graph. Now search for close by node
   // based on y-axis closeness.
   for (var _i2 = 0; _i2 < nbrNodes; _i2++) {
-    connectNeighbours(nodes, _i2, false, neighbourRange, 'y');
-
-    connectNeighbours(nodes, _i2, true, neighbourRange, 'y');
+    connectNeighbours(nodes, _i2, neighbourRange, { forwards: false, axis: 'y' });
+    connectNeighbours(nodes, _i2, neighbourRange, { forwards: true, axis: 'y' });
   }
 
-  // Sort nodes by id
+  // Sort nodes by id before building adjacency matrix.
   nodes.sort(function (a, b) {
     return a.id - b.id;
   });
+
+  var adjMatrix = [];
   for (var _i3 = 0; _i3 < nbrNodes; _i3++) {
     adjMatrix.push(nodes[_i3].vertices);
   }
